@@ -78,3 +78,21 @@ VALUES (
     }'::jsonb
 )
 ON CONFLICT (name) DO NOTHING;
+
+-- Controllers table: records physical controller identifiers and last seen
+CREATE TABLE IF NOT EXISTS controllers (
+    controller_id VARCHAR(255) PRIMARY KEY,
+    name VARCHAR(255),
+    guid VARCHAR(255),
+    last_seen TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Players table: persistent player profiles tied to a controller
+CREATE TABLE IF NOT EXISTS players (
+    id SERIAL PRIMARY KEY,
+    controller_id VARCHAR(255) NOT NULL REFERENCES controllers(controller_id) ON DELETE CASCADE,
+    neon_color VARCHAR(32) NOT NULL,
+    stats JSONB NOT NULL DEFAULT ('{}')::jsonb,
+    level INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);

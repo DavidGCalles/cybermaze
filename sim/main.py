@@ -131,6 +131,61 @@ def main():
     # Add a controllers buffer to hold latest controller inputs from Nexus
     state = {"clients": set(), "world": world_state}
     state["controllers"] = {}
+    # Track controllers already registered with CRUD and instantiated players
+    state["known_controllers"] = set()
+    state["instantiated_players"] = set()
+
+    async def async_upsert_controller(evt):
+        # Run the synchronous requests.post call in a thread to avoid blocking
+        def sync_post():
+            try:
+                r = requests.post(f"{crud_url}/controllers", json=evt, timeout=3)
+                return r.status_code
+            except Exception as e:
+                print(f"[SIM][CRUD] upsert error: {e}")
+                return None
+
+        await asyncio.to_thread(sync_post)
+
+    async def async_instantiate_player(controller_id: str):
+        # Ask CRUD for player profile (creates default if missing)
+        def sync_get():
+            try:
+                r = requests.get(f"{crud_url}/players/by-controller/{controller_id}", timeout=5)
+                if r.status_code == 200:
+                    return r.json()
+            except Exception as e:
+                print(f"[SIM][CRUD] fetch/create player error: {e}")
+            return None
+
+        player = await asyncio.to_thread(sync_get)
+        if not player:
+            print(f"[SIM] Failed to obtain player for controller {controller_id}")
+            return
+
+        pid = f"p_{controller_id}"
+        px = spawn["c"] * CELL_SIZE + CELL_SIZE / 2
+        py = spawn["r"] * CELL_SIZE + CELL_SIZE / 2
+        ent = {
+            "id": pid,
+            "x": px,
+            "y": py,
+            "angle": 0.0,
+            "color": player.get("neon_color", "#ffffff"),
+        }
+
+        players = state["world"]["entities"].setdefault("players", [])
+        # Remove placeholder static test subject if present
+        for i, p in enumerate(list(players)):
+            if p.get("id") == "p_01":
+                try:
+                    players.pop(i)
+                except Exception:
+                    pass
+                break
+
+        players.append(ent)
+        print(f"[SIM] Instantiated player {pid} for controller {controller_id}")
 
     async def broadcaster():
         # 60Hz tick loop
@@ -140,13 +195,39 @@ def main():
                 # Update world tick
                 state["world"]["tick"] += 1
 
-                # Simple demo motion: slight circular motion for the dummy player
+                # Handle controller inputs: register new controllers and instantiate players
+                for cid, info in list(state["controllers"].items()):
+                    evt = info.get("event") if isinstance(info, dict) else info
+                    if not isinstance(evt, dict):
+                        continue
+
+                    # If controller connected, upsert into DB once
+                    if evt.get("connected"):
+                        if cid not in state["known_controllers"]:
+                            state["known_controllers"].add(cid)
+                            asyncio.create_task(async_upsert_controller(evt))
+
+                    # If START pressed, instantiate a persistent player for this controller
+                    buttons = evt.get("buttons", {})
+                    if buttons.get("start"):
+                        if cid not in state["instantiated_players"]:
+                            state["instantiated_players"].add(cid)
+                            asyncio.create_task(async_instantiate_player(cid))
+
+                # Simple demo motion: slight circular motion for the dummy player (if still present)
                 t = state["world"]["tick"] / 60.0
                 base_x = spawn["c"] * CELL_SIZE + CELL_SIZE / 2
                 base_y = spawn["r"] * CELL_SIZE + CELL_SIZE / 2
                 radius = CELL_SIZE * 0.6
-                state["world"]["entities"]["players"][0]["x"] = base_x + radius * __import__("math").cos(t)
-                state["world"]["entities"]["players"][0]["y"] = base_y + radius * __import__("math").sin(t)
+                # If placeholder player exists, animate it; otherwise leave instantiated players to be controlled
+                players_list = state["world"]["entities"].get("players", [])
+                if players_list:
+                    # find placeholder by id
+                    for p in players_list:
+                        if p.get("id") == "p_01":
+                            p["x"] = base_x + radius * __import__("math").cos(t)
+                            p["y"] = base_y + radius * __import__("math").sin(t)
+                            break
 
                 payload = json.dumps(state["world"]) 
 

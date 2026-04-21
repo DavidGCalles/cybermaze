@@ -1,4 +1,6 @@
 import os
+import random
+import json
 from typing import Any, Dict, Optional
 from contextlib import asynccontextmanager
 
@@ -98,6 +100,105 @@ async def get_params():
     if params is None:
         raise HTTPException(status_code=404, detail="simulation parameters not found")
     return params
+
+
+async def upsert_controller_record(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Insert or update a controller record using controller identifier(s) present in payload."""
+    global pool
+    if pool is None:
+        raise RuntimeError("DB pool is not initialized")
+
+    # Try common keys used by Nexus payloads
+    cid = None
+    for key in ("id", "controllerId", "controller", "gamepadId", "device", "guid"):
+        if key in payload:
+            cid = str(payload[key])
+            break
+    if cid is None:
+        raise HTTPException(status_code=400, detail="missing controller identifier")
+
+    name = payload.get("name")
+    guid = payload.get("guid") or payload.get("guid")
+
+    await pool.execute(
+        """
+        INSERT INTO controllers (controller_id, name, guid, last_seen)
+        VALUES ($1, $2, $3, now())
+        ON CONFLICT (controller_id) DO UPDATE
+        SET name = EXCLUDED.name, guid = EXCLUDED.guid, last_seen = now()
+        """,
+        cid,
+        name,
+        guid,
+    )
+
+    return {"controller_id": cid, "name": name, "guid": guid}
+
+
+async def get_or_create_player_for_controller(controller_id: str) -> Dict[str, Any]:
+    """Return player row for controller_id, creating a default profile if missing."""
+    global pool
+    if pool is None:
+        raise RuntimeError("DB pool is not initialized")
+
+    row = await pool.fetchrow(
+        "SELECT id, controller_id, neon_color, stats, level, created_at FROM players WHERE controller_id = $1",
+        controller_id,
+    )
+    if row:
+        return {
+            "id": row["id"],
+            "controller_id": row["controller_id"],
+            "neon_color": row["neon_color"],
+            "stats": row["stats"],
+            "level": row["level"],
+            "created_at": row["created_at"],
+        }
+
+    # Create default player
+    color = f"#{random.randint(0, 0xFFFFFF):06x}"
+    stats = {}
+    level = 1
+    await pool.execute(
+        "INSERT INTO players (controller_id, neon_color, stats, level) VALUES ($1, $2, $3::jsonb, $4)",
+        controller_id,
+        color,
+        json.dumps(stats),
+        level,
+    )
+
+    row = await pool.fetchrow(
+        "SELECT id, controller_id, neon_color, stats, level, created_at FROM players WHERE controller_id = $1",
+        controller_id,
+    )
+    return {
+        "id": row["id"],
+        "controller_id": row["controller_id"],
+        "neon_color": row["neon_color"],
+        "stats": row["stats"],
+        "level": row["level"],
+        "created_at": row["created_at"],
+    }
+
+
+@app.post("/controllers")
+async def post_controller(payload: Dict[str, Any]):
+    try:
+        res = await upsert_controller_record(payload)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return res
+
+
+@app.get("/players/by-controller/{controller_id}")
+async def get_player_by_controller(controller_id: str):
+    try:
+        player = await get_or_create_player_for_controller(controller_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return player
 
 
 if __name__ == "__main__":
