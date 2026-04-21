@@ -62,12 +62,10 @@ services:
       retries: 5
 
   cybermaze-sim:
-    image: node:18-alpine
+    build:
+      context: ./sim
     container_name: cybermaze_sim
     working_dir: /usr/src/sim
-    volumes:
-      - ./sim:/usr/src/sim:ro
-    command: sh -c "while true; do sleep 3600; done"
     env_file:
       - .env
     ports:
