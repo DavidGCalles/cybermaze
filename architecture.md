@@ -23,7 +23,7 @@ Para mitigar riesgos de integración, la migración comenzará con un MVP llamad
 
 La arquitectura exige que la persistencia participe desde el primer milisegundo, evitando hardcodeos en el motor de simulación. El flujo será:
 
-1. **Seed inicial (DB)**: Al levantar la infraestructura, PostgreSQL se inicializa con un registro que contiene el esquema matricial del mapa del Hangar.
+1. (Ongoing) **Seed inicial (DB)**: Al levantar la infraestructura, PostgreSQL se inicializa con un registro que contiene el esquema matricial del mapa del Hangar.
 2. **Bloqueo de simulación (Sim & CRUD)**: `cybermaze-sim` arranca con acceso de jugadores cerrado. Realiza una petición HTTP a `cybermaze-crud` para obtener el esquema del Hangar. Una vez parseado en memoria, el motor abre el WebSocket.
 3. **Ingesta de input (backend)**: Los jugadores se conectan; los comandos del gamepad viajan al servidor, donde el motor calcula el movimiento y resuelve colisiones contra el mapa en memoria.
 4. **Emisión de estado (network)**: En cada ciclo (p. ej. 30 Hz), el servidor empaqueta las coordenadas exactas de las entidades y las emite a los clientes.
