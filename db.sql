@@ -5,16 +5,19 @@
 CREATE TABLE IF NOT EXISTS maps (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
+    slug VARCHAR(255) NOT NULL UNIQUE,
     layout JSONB NOT NULL,
+    metadata JSONB NOT NULL DEFAULT ('{}')::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
 -- Insert a minimal "Hangar" map using the legacy array-of-strings layout.
 -- This layout is a closed hangar (walls '#' and floor '.') with a single
 -- player spawn '1' and contains NO enemies or emitters.
-INSERT INTO maps (name, layout)
+INSERT INTO maps (name, slug, layout, metadata)
 VALUES (
     'HANGAR_MVP',
+    'hangar',
     (
         '[
             "##############################",
@@ -33,6 +36,29 @@ VALUES (
             "#............................#",
             "##############################"
         ]'::jsonb
+    ),
+    (
+        '{
+            "cols": 30,
+            "rows": 15,
+            "layout": [
+                "##############################",
+                "#............................#",
+                "#............................#",
+                "#............................#",
+                "#............................#",
+                "#............................#",
+                "#............................#",
+                "#..........1.................#",
+                "#............................#",
+                "#............................#",
+                "#............................#",
+                "#............................#",
+                "#............................#",
+                "#............................#",
+                "##############################"
+            ]
+        }'::jsonb
     )
 )
 ON CONFLICT (name) DO NOTHING;
