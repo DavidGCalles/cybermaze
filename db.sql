@@ -21,7 +21,7 @@ VALUES (
     (
         '[
             "##############################",
-            "#..........#......#..........#",
+            "#..........#..TT..#..........#",
             "#..........#......#..........#",
             "#...........##..##...........#",
             "#............#..#............#",
@@ -29,10 +29,10 @@ VALUES (
             "#............#..#............#",
             "#............................#",
             "#..####................####..#",
-            "#..#......................#..#",
+            "#..#T....................T#..#",
             "#..####.......1........####..#",
             "#............#..#............#",
-            "#............#..#............#",
+            "#............#TT#............#",
             "#............####............#",
             "##############################"
         ]'::jsonb
@@ -96,3 +96,32 @@ CREATE TABLE IF NOT EXISTS players (
     level INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
+
+-- Table to define interactive trigger zones on the maps
+CREATE TABLE map_triggers (
+    id SERIAL PRIMARY KEY,
+    map_slug VARCHAR NOT NULL,
+    cell_c INTEGER NOT NULL,
+    cell_r INTEGER NOT NULL,
+
+    -- Activation Block (The "How")
+    activation_mode VARCHAR NOT NULL CHECK (activation_mode IN ('TIME_HOLD', 'BUTTON_EDGE')),
+    activation_threshold INTEGER NOT NULL,
+
+    -- Behavior Block (The "What")
+    behavior_type VARCHAR NOT NULL,
+    payload JSONB,
+
+    UNIQUE(map_slug, cell_c, cell_r)
+);
+
+-- Example Data for the Hangar MVP
+INSERT INTO map_triggers (map_slug, cell_c, cell_r, activation_mode, activation_threshold, behavior_type, payload) VALUES
+-- Terminals (Button Press)
+('hangar', 14, 1, 'BUTTON_EDGE', 0, 'CHANGE_PHASE', '{"target_phase": "IN_GAME"}'),
+('hangar', 15, 1, 'BUTTON_EDGE', 0, 'CHANGE_PHASE', '{"target_phase": "IN_GAME"}'),
+('hangar', 4, 9, 'BUTTON_EDGE', 0, 'CHANGE_PHASE', '{"target_phase": "IN_GAME"}'),
+('hangar', 25, 9, 'BUTTON_EDGE', 0, 'CHANGE_PHASE', '{"target_phase": "IN_GAME"}'),
+-- Pits (Time Hold)
+('hangar', 14, 12, 'TIME_HOLD', 180, 'EQUIP_LOADOUT', '{"neon_color": "#00ffff"}'),
+('hangar', 15, 12, 'TIME_HOLD', 180, 'EQUIP_LOADOUT', '{"neon_color": "#ff00ff"}');

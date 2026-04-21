@@ -56,9 +56,9 @@ services:
     depends_on:
       - cybermaze-db
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 3s
       retries: 5
 
   cybermaze-sim:
@@ -72,5 +72,7 @@ services:
       - "4000:4000"
     restart: unless-stopped
     depends_on:
-      - cybermaze-db
-      - cybermaze-crud
+      cybermaze-db:
+        condition: service_started
+      cybermaze-crud:
+        condition: service_healthy

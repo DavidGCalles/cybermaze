@@ -31,7 +31,8 @@ class Grid:
                     # out-of-bounds treated as solid
                     return True
                 val = self.map[r][c]
-                if val == 1 or val == 2:
+                # 1: Wall, 2: Destructible, 6: Button Trigger (Terminal)
+                if val in [1, 2, 6]:
                     cell_x = c * self.cell_size
                     cell_y = r * self.cell_size
                     if (local_x + radius > cell_x and local_x - radius < cell_x + self.cell_size and

@@ -67,6 +67,13 @@ app.add_middleware(
 )
 
 
+@app.get("/health")
+async def health_check():
+    """Simple health check endpoint to confirm the API is running."""
+    # It can be expanded later to check DB connectivity etc.
+    return {"status": "ok"}
+
+
 async def fetch_simulation_parameters(name: str = "default") -> Optional[Dict[str, Any]]:
     global pool
     if pool is None:
@@ -199,6 +206,20 @@ async def get_player_by_controller(controller_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return player
+
+
+@app.get("/map_triggers/by-slug/{slug}")
+async def get_map_triggers(slug: str):
+    """Fetch all trigger rules for a given map slug."""
+    global pool
+    if pool is None:
+        raise HTTPException(status_code=500, detail="DB pool not initialized")
+    
+    rows = await pool.fetch(
+        "SELECT * FROM map_triggers WHERE map_slug = $1", slug
+    )
+    
+    return [dict(row) for row in rows]
 
 
 if __name__ == "__main__":

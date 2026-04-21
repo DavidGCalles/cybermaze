@@ -91,7 +91,7 @@ def main():
 
     # Parse layout
     parser = MapParser()
-    map_data = parser.parse(layout)
+    map_data = parser.parse(layout, slug, crud_url)
 
     # Print ASCII representation (original layout is already ASCII)
     print_ascii_layout(layout)

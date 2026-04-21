@@ -108,6 +108,40 @@
           label.y = y + displayCellSize / 2 - label.height / 2;
           staticContainer.addChild(b);
           staticContainer.addChild(label);
+        } else if (val === 5) { // EQUIP_LOADOUT (Pit)
+          const pit = new PIXI.Graphics();
+          pit.beginFill(0x00ff66, 0.15);
+          pit.lineStyle(1, 0x00ff66, 0.9);
+          pit.drawRect(x, y, displayCellSize, displayCellSize);
+          pit.endFill();
+          staticContainer.addChild(pit);
+        } else if (val === 6) { // CHANGE_PHASE (Terminal)
+          const term = new PIXI.Graphics();
+          term.beginFill(0xff00ff, 0.2);
+          term.lineStyle(1, 0xff00ff, 1);
+          term.drawRect(x + 2, y + 2, displayCellSize - 4, displayCellSize - 4);
+          term.endFill();
+          term.beginFill(0xff00ff, 0.8);
+          term.drawRect(x + 6, y + 6, displayCellSize - 12, 2);
+          term.endFill();
+          staticContainer.addChild(term);
+        } else if (val === 5) { // EQUIP_LOADOUT (Pit)
+          const pit = new PIXI.Graphics();
+          pit.beginFill(0x00ff66, 0.15);
+          pit.lineStyle(1, 0x00ff66, 0.9);
+          pit.drawRect(x, y, displayCellSize, displayCellSize);
+          pit.endFill();
+          staticContainer.addChild(pit);
+        } else if (val === 6) { // CHANGE_PHASE (Terminal)
+          const term = new PIXI.Graphics();
+          term.beginFill(0xff00ff, 0.2);
+          term.lineStyle(1, 0xff00ff, 1);
+          term.drawRect(x + 2, y + 2, displayCellSize - 4, displayCellSize - 4);
+          term.endFill();
+          term.beginFill(0xff00ff, 0.8);
+          term.drawRect(x + 6, y + 6, displayCellSize - 12, 2);
+          term.endFill();
+          staticContainer.addChild(term);
         }
       }
     }
