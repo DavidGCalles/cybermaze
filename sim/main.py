@@ -164,8 +164,71 @@ def main():
             return
 
         pid = f"p_{controller_id}"
-        px = spawn["c"] * CELL_SIZE + CELL_SIZE / 2
-        py = spawn["r"] * CELL_SIZE + CELL_SIZE / 2
+
+        # determine a clear non-colliding position for the new player
+        def find_clear_position(spawn_cell, map_data, players_list, cell_size, radius_pixels, max_search=8):
+            rows = len(map_data["map"])
+            cols = len(map_data["map"][0]) if rows > 0 else 0
+
+            sc = spawn_cell.get("c", 0)
+            sr = spawn_cell.get("r", 0)
+
+            from math import ceil
+
+            cell_radius = max(1, int(ceil(radius_pixels / float(cell_size))))
+
+            def cell_is_free(c, r):
+                if c < 0 or r < 0 or r >= rows or c >= cols:
+                    return False
+                return map_data["map"][r][c] == 0
+
+            def collides_with_players(px, py):
+                for p in players_list:
+                    ox = p.get("x", 0)
+                    oy = p.get("y", 0)
+                    dx = ox - px
+                    dy = oy - py
+                    if dx * dx + dy * dy < (2 * radius_pixels) ** 2:
+                        return True
+                return False
+
+            # search in expanding square rings around spawn cell
+            for d in range(0, max_search + 1):
+                for dx in range(-d, d + 1):
+                    for dy in range(-d, d + 1):
+                        # only check perimeter of current ring to prefer closer spots
+                        if abs(dx) != d and abs(dy) != d and d != 0:
+                            continue
+                        c = sc + dx
+                        r = sr + dy
+                        # ensure candidate cell and neighbors within cell_radius are free (no walls)
+                        ok = True
+                        for nc in range(c - cell_radius, c + cell_radius + 1):
+                            for nr in range(r - cell_radius, r + cell_radius + 1):
+                                if not cell_is_free(nc, nr):
+                                    ok = False
+                                    break
+                            if not ok:
+                                break
+                        if not ok:
+                            continue
+
+                        # convert to pixel center
+                        px = c * cell_size + cell_size / 2
+                        py = r * cell_size + cell_size / 2
+
+                        if collides_with_players(px, py):
+                            continue
+
+                        return px, py
+
+            # fallback: spawn center
+            return spawn_cell["c"] * cell_size + cell_size / 2, spawn_cell["r"] * cell_size + cell_size / 2
+
+        players = state["world"]["entities"].setdefault("players", [])
+        # compute radius in pixels (use conservative default relative to cell)
+        default_radius = CELL_SIZE * 0.35
+        px, py = find_clear_position(spawn, map_data, players, CELL_SIZE, default_radius)
         ent = {
             "id": pid,
             "x": px,
@@ -174,7 +237,6 @@ def main():
             "color": player.get("neon_color", "#ffffff"),
         }
 
-        players = state["world"]["entities"].setdefault("players", [])
         # Remove placeholder static test subject if present
         for i, p in enumerate(list(players)):
             if p.get("id") == "p_01":
@@ -184,6 +246,9 @@ def main():
                     pass
                 break
 
+        # ensure the entity uses the chosen px/py
+        ent["x"] = px
+        ent["y"] = py
         players.append(ent)
         print(f"[SIM] Instantiated player {pid} for controller {controller_id}")
 
