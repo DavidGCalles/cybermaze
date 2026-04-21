@@ -6,6 +6,7 @@ import json
 
 import requests
 import websockets
+import nexus_client
 
 from map_parser import MapParser
 
@@ -127,7 +128,9 @@ def main():
     }
 
     # Shared state for server
+    # Add a controllers buffer to hold latest controller inputs from Nexus
     state = {"clients": set(), "world": world_state}
+    state["controllers"] = {}
 
     async def broadcaster():
         # 60Hz tick loop
@@ -191,11 +194,14 @@ def main():
             await ws_handler(websocket, path, state)
 
         async with websockets.serve(handler, "0.0.0.0", ws_port):
-            # start broadcaster task
+            # Start Nexus client (consumes external controller events) and broadcaster
+            nexus_uri = os.getenv("NEXUS_WS_URI", "ws://host.docker.internal:8765")
+            ctask = asyncio.create_task(nexus_client.run_nexus_client(state["controllers"], nexus_uri))
             btask = asyncio.create_task(broadcaster())
             try:
                 await asyncio.Future()  # run until cancelled
             finally:
+                ctask.cancel()
                 btask.cancel()
 
     try:
