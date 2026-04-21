@@ -3,12 +3,15 @@ import sys
 import time
 import asyncio
 import json
+import math
 
 import requests
 import websockets
 import nexus_client
 
 from map_parser import MapParser
+from grid import Grid
+from physics import process_player_movements
 
 
 def build_crud_url():
@@ -100,6 +103,27 @@ def main():
     # Convert cell coordinates to pixel positions on a fixed scale
     CELL_SIZE = int(os.getenv("SIM_CELL_SIZE", "32"))
 
+    # Fetch runtime params (PLAYER_SPEED, PLAYER_RADIUS) from CRUD /params
+    PLAYER_SPEED = None
+    PLAYER_RADIUS = None
+    try:
+        p_resp = requests.get(f"{crud_url}/params", timeout=3)
+        if p_resp.status_code == 200:
+            pbody = p_resp.json()
+            # Accept numeric strings as well
+            if "PLAYER_SPEED" in pbody:
+                try:
+                    PLAYER_SPEED = float(pbody["PLAYER_SPEED"])
+                except Exception:
+                    PLAYER_SPEED = None
+            if "PLAYER_RADIUS" in pbody:
+                try:
+                    PLAYER_RADIUS = float(pbody["PLAYER_RADIUS"])
+                except Exception:
+                    PLAYER_RADIUS = None
+    except Exception:
+        pass
+
     # Choose a spawn for dummy player (first available spawn or center)
     spawn = None
     for s in map_data.get("playerSpawns", []):
@@ -126,6 +150,9 @@ def main():
             ]
         }
     }
+
+        # Create server-side grid helper for collision checks
+    grid = Grid(map_data["map"], CELL_SIZE, margin_left=0, margin_top=0)
 
     # Shared state for server
     # Add a controllers buffer to hold latest controller inputs from Nexus
@@ -286,6 +313,16 @@ def main():
                 radius = CELL_SIZE * 0.6
                 # If placeholder player exists, animate it; otherwise leave instantiated players to be controlled
                 players_list = state["world"]["entities"].get("players", [])
+                # Authoritative physics: delegate to physics module
+                deadzone = float(os.getenv("SIM_DEADZONE", "0.1"))
+                # sensible fallbacks if CRUD params absent
+                default_speed = CELL_SIZE * 0.09
+                default_radius = CELL_SIZE * 0.35
+                speed = PLAYER_SPEED if PLAYER_SPEED is not None else default_speed
+                radius_px = PLAYER_RADIUS if PLAYER_RADIUS is not None else default_radius
+
+                process_player_movements(state["world"], state["controllers"], state["instantiated_players"],
+                                         grid, speed, radius_px, deadzone)
                 if players_list:
                     # find placeholder by id
                     for p in players_list:
