@@ -6,7 +6,14 @@
   <title>Cybermaze - Dummy Frontend</title>
 </head>
 <body>
-  <h1>Cybermaze — Dummy New Frontend</h1>
-  <p>This is a minimal dummy frontend for testing. The legacy monolith runs on port 8081.</p>
-</body>
-</html>
+  <h1>Cybermaze — Pixi Renderer Frontend</h1>
+  <p>This frontend renders the world state received from the simulator via WebSocket using PixiJS.</p>
+
+  <!-- PixiJS (release) -->
+  <script src="https://pixijs.download/release/pixi.min.js"></script>
+  <!-- Renderer logic (dumb view) -->
+  <script src="pixiRenderer.js"></script>
+  <!-- WebSocket client (forwards payloads to renderer) -->
+  <script src="wsClient.js"></script>
+  </body>
+  </html>
