@@ -7,7 +7,7 @@ services:
       - "8080:80"
     volumes:
       - ./cybermaze-front:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx.front.conf:/etc/nginx/conf.d/default.conf:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
@@ -24,7 +24,7 @@ services:
       - "8081:80"
     volumes:
       - ./cybermazeJS:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx.legacy.conf:/etc/nginx/conf.d/default.conf:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
