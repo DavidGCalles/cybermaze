@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import asyncpg
 from asyncpg.pool import Pool
 
@@ -54,6 +55,28 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="cybermaze-crud", lifespan=lifespan)
 
+# Allow requests from local frontends / dev servers
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+
+async def fetch_simulation_parameters(name: str = "default") -> Optional[Dict[str, Any]]:
+    global pool
+    if pool is None:
+        raise RuntimeError("DB pool is not initialized")
+    row = await pool.fetchrow(
+        "SELECT params FROM simulation_parameters WHERE name = $1 LIMIT 1",
+        "default",
+    )
+    if not row:
+        return None
+    return row["params"]
+
 
 @app.get("/maps/{slug}")
 async def get_map(slug: str):
@@ -64,6 +87,17 @@ async def get_map(slug: str):
     if m is None:
         raise HTTPException(status_code=404, detail="map not found")
     return m
+
+
+@app.get("/params")
+async def get_params():
+    try:
+        params = await fetch_simulation_parameters()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    if params is None:
+        raise HTTPException(status_code=404, detail="simulation parameters not found")
+    return params
 
 
 if __name__ == "__main__":

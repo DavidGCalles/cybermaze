@@ -4,6 +4,33 @@
 
 (function () {
   const DEFAULT_SIM_CELL = 32; // fallback if we can't estimate
+  // Remote simulation parameters fetched from cybermaze-crud
+  let REMOTE_SIM_PARAMS = null;
+
+  // Try to fetch /params from same origin, fall back to api on port 3000
+  (function fetchParams() {
+    const tryUrls = [
+      '/params',
+      `http://${location.hostname}:3000/params`
+    ];
+    for (const u of tryUrls) {
+      fetch(u).then(r => {
+        if (!r.ok) throw new Error('no');
+        return r.json();
+      }).then(j => {
+        REMOTE_SIM_PARAMS = j;
+        if (j.cell_size) {
+          simCellSize = j.cell_size;
+        }
+        // allow remote colors or other overrides if provided
+        if (j.colors) {
+          Object.assign(COLORS, j.colors);
+        }
+        console.log('pixiRenderer: loaded /params', j);
+      }).catch(() => {});
+      if (REMOTE_SIM_PARAMS) break;
+    }
+  })();
 
   // App + containers are created by `init()` to keep rendering decoupled from transport
   let app = null;
@@ -27,19 +54,7 @@
 
   let tickText = null;
 
-  function estimateSimCell(map, players) {
-    if (!players || players.length === 0) return DEFAULT_SIM_CELL;
-    let best = { size: DEFAULT_SIM_CELL, score: Infinity };
-    for (let s = 8; s <= 64; s++) {
-      let score = 0;
-      for (const p of players) {
-        const fx = (p.x / s) % 1; const fy = (p.y / s) % 1;
-        score += Math.abs(fx - 0.5) + Math.abs(fy - 0.5);
-      }
-      if (score < best.score) best = { size: s, score };
-    }
-    return best.size;
-  }
+  // No local estimation: sim cell size comes from remote `/params`.
 
   function buildStatic(map) {
     if (!staticContainer) return;
@@ -119,7 +134,9 @@
         // create
         s = new PIXI.Graphics();
         s.radius = Math.max(6, displayCellSize * 0.35);
-        s.beginFill(PIXI.utils.string2hex(p.color || '#00ffff'));
+        // convert hex string like '#00ffff' to number
+        const colNum = (typeof p.color === 'string' && p.color.startsWith('#')) ? parseInt(p.color.slice(1), 16) : 0x00ffff;
+        s.beginFill(colNum);
         s.drawPolygon([-s.radius, s.radius * 0.8, s.radius, 0, -s.radius, -s.radius * 0.8]);
         s.endFill();
         s.pivot.set(0, 0);
@@ -153,10 +170,9 @@
       buildStatic(payload.map);
     }
 
-    // Estimate sim cell size if possible
-    if (payload.entities && payload.entities.players && payload.entities.players.length > 0) {
-      const est = estimateSimCell(payload.map, payload.entities.players);
-      if (est && est !== simCellSize) simCellSize = est;
+    // Use server-provided sim cell size (if available). Do not estimate locally.
+    if (REMOTE_SIM_PARAMS && REMOTE_SIM_PARAMS.cell_size) {
+      simCellSize = REMOTE_SIM_PARAMS.cell_size;
     }
 
     // Update dynamic objects
@@ -167,8 +183,15 @@
   // Create the PIXI app and containers. Called by external code (e.g. ws client).
   function init() {
     if (app) return;
-    app = new PIXI.Application({ resizeTo: window, backgroundColor: COLORS.BG });
-    document.body.appendChild(app.view);
+
+    // Create a dedicated canvas and pass it to Pixi to avoid incompatible options across versions
+    const canvas = document.createElement('canvas');
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.display = 'block';
+    document.body.appendChild(canvas);
+
+    app = new PIXI.Application({ view: canvas, width: window.innerWidth, height: window.innerHeight, backgroundColor: COLORS.BG });
 
     staticContainer = new PIXI.Container();
     dynamicContainer = new PIXI.Container();
@@ -177,6 +200,16 @@
 
     tickText = new PIXI.Text('', { fill: 0xffffff, fontSize: 14 });
     tickText.x = 8; tickText.y = 8; app.stage.addChild(tickText);
+
+    // Ensure renderer size matches window
+    function doResize() {
+      const w = window.innerWidth; const h = window.innerHeight;
+      app.renderer.resize(w, h);
+      if (currentMapHash) {
+        try { buildStatic(JSON.parse(currentMapHash)); } catch (e) {}
+      }
+    }
+    window.addEventListener('resize', doResize);
 
     // Resize handler: rebuild static to adjust margin/scale
     window.addEventListener('resize', () => {
