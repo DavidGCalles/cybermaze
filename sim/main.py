@@ -165,6 +165,7 @@ def main():
     # Track controllers already registered with CRUD and instantiated players
     state["known_controllers"] = set()
     state["instantiated_players"] = set()
+    state["player_trigger_states"] = {}
 
     async def async_upsert_controller(evt):
         # Run the synchronous requests.post call in a thread to avoid blocking
@@ -347,6 +348,61 @@ def main():
 
                 process_player_movements(state["world"], state["controllers"], state["instantiated_players"],
                                          grid, speed, radius_px, deadzone)
+
+                # Process triggers
+                trigger_zones = map_data.get("triggerZones", [])
+                for p in players_list:
+                    p.pop("active_trigger", None)  # Clear previous trigger state
+                    player_in_zone = False
+                    for zone in trigger_zones:
+                        rect = zone.get("rect", [0, 0, 0, 0])
+                        rule = zone.get("rule", {})
+                        
+                        # Circle-AABB collision detection
+                        player_x, player_y = p["x"], p["y"]
+                        zone_x, zone_y = rect[0] * CELL_SIZE, rect[1] * CELL_SIZE
+                        zone_w, zone_h = rect[2] * CELL_SIZE, rect[3] * CELL_SIZE
+                        
+                        closest_x = max(zone_x, min(player_x, zone_x + zone_w))
+                        closest_y = max(zone_y, min(player_y, zone_y + zone_h))
+                        distance_x = player_x - closest_x
+                        distance_y = player_y - closest_y
+
+                        # For solid triggers, we need a slightly larger detection radius
+                        # to compensate for physics pushing the player away.
+                        interaction_radius = radius_px
+                        mode = rule.get("activation_mode")
+                        if mode == "BUTTON_EDGE":
+                            interaction_radius += 4  # 4 pixels of interaction leeway
+
+                        if (distance_x**2 + distance_y**2) < (interaction_radius**2):
+                            player_in_zone = True
+                            mode = rule.get("activation_mode")
+                            
+                            if mode == "BUTTON_EDGE":
+                                p["active_trigger"] = {"type": "button", "label": "SOUTH"}
+
+                            elif mode == "TIME_HOLD":
+                                pid = p["id"]
+                                # Initialize state if not present
+                                if pid not in state["player_trigger_states"]:
+                                    state["player_trigger_states"][pid] = {"progress": 0}
+
+                                state["player_trigger_states"][pid]["progress"] += 1
+                                
+                                threshold = rule.get("activation_threshold", 1)
+                                progress_val = state["player_trigger_states"][pid]["progress"]
+                                normalized_progress = min(progress_val / threshold, 1.0)
+                                p["active_trigger"] = {"type": "hold", "progress": normalized_progress}
+
+                            break  # Player can only be in one zone at a time
+
+                    if not player_in_zone:
+                        # Reset TIME_HOLD progress if player leaves the zone
+                        pid = p.get("id")
+                        if pid and pid in state["player_trigger_states"]:
+                            state["player_trigger_states"][pid]["progress"] = 0
+
                 if players_list:
                     # find placeholder by id
                     for p in players_list:

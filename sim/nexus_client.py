@@ -39,7 +39,7 @@ async def run_nexus_client(latest_inputs: dict, uri: str):
                     latest_inputs[cid] = {"ts": ts, "event": data}
 
                     # Print the event flow to console (DoD requirement)
-                    print(f"[NEXUS][{cid}] {data}")
+                    #print(f"[NEXUS][{cid}] {data}")
 
         except asyncio.CancelledError:
             print("[NEXUS] Cancelled, shutting down Nexus client")

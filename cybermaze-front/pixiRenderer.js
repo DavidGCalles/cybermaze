@@ -182,6 +182,10 @@
         const ui = createOverCharUI();
         ui.name = 'overCharUi';
         s.addChild(ui);
+
+        const triggerUi = createTriggerUI();
+        triggerUi.name = 'triggerUi';
+        s.addChild(triggerUi);
         
         dynamicContainer.addChild(s);
         playersById.set(p.id, s);
@@ -198,6 +202,8 @@
       // Update UI
       const uiContainer = s.getChildByName('overCharUi');
       updateOverCharUI(uiContainer, p);
+      const triggerUiContainer = s.getChildByName('triggerUi');
+      updateTriggerUI(triggerUiContainer, p);
     }
     // remove missing players
     for (const id of Array.from(playersById.keys())) {
@@ -274,6 +280,82 @@
         const maxEnergy = player.max_energy || 100;
         const energyPercent = (player.energy || 0) / (maxEnergy > 0 ? maxEnergy : 100);
         energyBar.width = barWidth * energyPercent;
+    }
+  }
+
+  function createTriggerUI() {
+    const ui = new PIXI.Container();
+    const ratios = (REMOTE_SIM_PARAMS && REMOTE_SIM_PARAMS.entity_ratios) || {};
+    const barWidth = displayCellSize * (ratios.UI_BAR_WIDTH || 1.2);
+    
+    // -- Button Prompt --
+    const buttonPrompt = new PIXI.Text('Pulsa [A]', {
+        fontFamily: 'monospace',
+        fontSize: 14,
+        fill: 0xffffff,
+        stroke: 0x000000,
+        strokeThickness: 3
+    });
+    buttonPrompt.name = 'buttonPrompt';
+    buttonPrompt.anchor.set(0.5);
+    buttonPrompt.visible = false;
+    ui.addChild(buttonPrompt);
+
+    // -- Hold Progress Bar --
+    const holdContainer = new PIXI.Container();
+    holdContainer.name = 'holdContainer';
+    const holdBarBg = new PIXI.Graphics();
+    holdBarBg.beginFill(0x888888, 0.7);
+    holdBarBg.drawRect(0, 0, barWidth, 8);
+    holdBarBg.endFill();
+    holdContainer.addChild(holdBarBg);
+    
+    const holdBar = new PIXI.Graphics();
+    holdBar.beginFill(0xffaa00);
+    holdBar.drawRect(0, 0, barWidth, 8);
+    holdBar.endFill();
+    holdBar.name = 'holdBar';
+    holdContainer.addChild(holdBar);
+
+    holdContainer.x = -barWidth / 2; // Center the container
+    holdContainer.visible = false;
+    ui.addChild(holdContainer);
+    
+    // Position above stats bars
+    const uiOffsetRatio = ratios.UI_OFFSET || 0.8;
+    ui.y = -displayCellSize * uiOffsetRatio - 15; // 15px above stats
+    
+    return ui;
+  }
+
+  function updateTriggerUI(uiContainer, player) {
+    if (!uiContainer) return;
+    const buttonPrompt = uiContainer.getChildByName('buttonPrompt');
+    const holdContainer = uiContainer.getChildByName('holdContainer');
+
+    const trigger = player.active_trigger;
+
+    if (!trigger) {
+      if (buttonPrompt) buttonPrompt.visible = false;
+      if (holdContainer) holdContainer.visible = false;
+      return;
+    }
+    
+    if (trigger.type === 'button') {
+      if (holdContainer) holdContainer.visible = false;
+      if (buttonPrompt) {
+        buttonPrompt.text = `Pulsa [${trigger.label || 'A'}]`;
+        buttonPrompt.visible = true;
+      }
+    } else if (trigger.type === 'hold') {
+      if (buttonPrompt) buttonPrompt.visible = false;
+      if (holdContainer) {
+        const holdBar = holdContainer.getChildByName('holdBar');
+        const ratios = (REMOTE_SIM_PARAMS && REMOTE_SIM_PARAMS.entity_ratios) || {};
+        const barWidth = displayCellSize * (ratios.UI_BAR_WIDTH || 1.2);
+        holdBar.width = barWidth * (trigger.progress || 0);
+        holdContainer.visible = true;
+      }
     }
   }
 
