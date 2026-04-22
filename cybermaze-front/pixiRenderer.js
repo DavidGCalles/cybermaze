@@ -197,6 +197,8 @@
       const avatar = s.getChildByName('avatar');
       if (avatar) {
         avatar.rotation = p.angle || 0;
+        const colNum = (typeof p.color === 'string' && p.color.startsWith('#')) ? parseInt(p.color.slice(1), 16) : 0x00ffff;
+        avatar.tint = colNum;
       }
 
       // Update UI

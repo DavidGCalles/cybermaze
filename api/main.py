@@ -222,6 +222,96 @@ async def get_map_triggers(slug: str):
     return [dict(row) for row in rows]
 
 
+from pydantic import BaseModel
+
+# Pydantic models for player data updates
+class PlayerUpdate(BaseModel):
+    neon_color: Optional[str] = None
+    stats: Optional[Dict[str, Any]] = None
+    level: Optional[int] = None
+
+class PlayerFull(BaseModel):
+    neon_color: str
+    stats: Dict[str, Any]
+    level: int
+
+@app.get("/players/{player_id}")
+async def get_player(player_id: int):
+    """Fetch a single player by their unique ID."""
+    global pool
+    if pool is None:
+        raise HTTPException(status_code=500, detail="DB pool not initialized")
+    
+    row = await pool.fetchrow("SELECT id, controller_id, neon_color, stats, level FROM players WHERE id = $1", player_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Player not found")
+    return dict(row)
+
+
+@app.put("/players/{player_id}")
+async def update_player(player_id: int, player: PlayerFull):
+    """Replace a player's data entirely."""
+    global pool
+    if pool is None:
+        raise HTTPException(status_code=500, detail="DB pool not initialized")
+
+    try:
+        updated_row = await pool.fetchrow(
+            """
+            UPDATE players
+            SET neon_color = $1, stats = $2::jsonb, level = $3
+            WHERE id = $4
+            RETURNING id, controller_id, neon_color, stats, level
+            """,
+            player.neon_color, json.dumps(player.stats), player.level, player_id
+        )
+        if not updated_row:
+            raise HTTPException(status_code=404, detail="Player not found")
+        return dict(updated_row)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/players/{player_id}")
+async def patch_player(player_id: int, player: PlayerUpdate):
+    """Partially update a player's data, with atomic JSON merging for stats."""
+    global pool
+    if pool is None:
+        raise HTTPException(status_code=500, detail="DB pool not initialized")
+
+    # Get only the fields that were actually sent in the payload
+    update_data = player.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="At least one field must be provided for update")
+
+    # Dynamically build the SET clause
+    set_clauses = []
+    values = []
+    i = 1
+    for key, value in update_data.items():
+        if key == 'stats' and isinstance(value, dict):
+            # For stats, merge the new JSON with the existing one
+            set_clauses.append(f"stats = stats || ${i}::jsonb")
+            values.append(json.dumps(value))
+        else:
+            set_clauses.append(f"{key} = ${i}")
+            values.append(value)
+        i += 1
+
+    # Add player_id to the end of the values list for the WHERE clause
+    values.append(player_id)
+    
+    query = f"UPDATE players SET {', '.join(set_clauses)} WHERE id = ${i} RETURNING id, controller_id, neon_color, stats, level"
+    
+    try:
+        updated_row = await pool.fetchrow(query, *values)
+        if not updated_row:
+            raise HTTPException(status_code=404, detail="Player not found")
+        return dict(updated_row)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
 
