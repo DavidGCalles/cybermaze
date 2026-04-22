@@ -147,7 +147,9 @@ def main():
                     "angle": 0.0,
                     "color": "#00ffff",
                     "hp": 100,
-                    "energy": 75
+                    "energy": 75,
+                    "max_hp": 100,
+                    "max_energy": 100
                 }
             ]
         }
@@ -258,14 +260,32 @@ def main():
         # compute radius in pixels (use conservative default relative to cell)
         default_radius = CELL_SIZE * 0.35
         px, py = find_clear_position(spawn, map_data, players, CELL_SIZE, default_radius)
+
+        # Calculate stats based on player's level and base stats from DB
+        stats_data = player.get("stats", {})
+        if isinstance(stats_data, str):
+            try:
+                stats_data = json.loads(stats_data)
+            except json.JSONDecodeError:
+                stats_data = {}
+        
+        level = player.get("level", 1)
+        base_hp = stats_data.get("base_hp", 100)
+        base_energy = stats_data.get("base_energy", 100)
+        
+        max_hp = base_hp * (level * 0.8)
+        max_energy = base_energy * (level * 0.6)
+
         ent = {
             "id": pid,
             "x": px,
             "y": py,
             "angle": 0.0,
             "color": player.get("neon_color", "#ffffff"),
-            "hp": 100,
-            "energy": 100
+            "hp": max_hp,
+            "energy": max_energy,
+            "max_hp": max_hp,
+            "max_energy": max_energy,
         }
 
         # Remove placeholder static test subject if present

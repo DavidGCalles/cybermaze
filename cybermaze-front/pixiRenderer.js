@@ -266,11 +266,13 @@
     const barWidth = displayCellSize * (ratios.UI_BAR_WIDTH || 1.2);
     
     if (hpBar) {
-        const hpPercent = (player.hp || 0) / 100;
+        const maxHp = player.max_hp || 100;
+        const hpPercent = (player.hp || 0) / (maxHp > 0 ? maxHp : 100);
         hpBar.width = barWidth * hpPercent;
     }
     if (energyBar) {
-        const energyPercent = (player.energy || 0) / 100;
+        const maxEnergy = player.max_energy || 100;
+        const energyPercent = (player.energy || 0) / (maxEnergy > 0 ? maxEnergy : 100);
         energyBar.width = barWidth * energyPercent;
     }
   }
