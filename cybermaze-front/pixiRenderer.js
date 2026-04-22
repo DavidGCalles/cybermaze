@@ -166,29 +166,112 @@
       let s = playersById.get(p.id);
       if (!s) {
         // create
-        s = new PIXI.Graphics();
-        s.radius = Math.max(6, displayCellSize * 0.35);
-        // convert hex string like '#00ffff' to number
+        s = new PIXI.Container();
+
+        const avatar = new PIXI.Graphics();
+        avatar.name = 'avatar';
+        const playerRadiusRatio = (REMOTE_SIM_PARAMS && REMOTE_SIM_PARAMS.entity_ratios) ? REMOTE_SIM_PARAMS.entity_ratios.PLAYER_RADIUS : 0.35;
+        const radius = Math.max(6, displayCellSize * playerRadiusRatio);
         const colNum = (typeof p.color === 'string' && p.color.startsWith('#')) ? parseInt(p.color.slice(1), 16) : 0x00ffff;
-        s.beginFill(colNum);
-        s.drawPolygon([-s.radius, s.radius * 0.8, s.radius, 0, -s.radius, -s.radius * 0.8]);
-        s.endFill();
-        s.pivot.set(0, 0);
+        avatar.beginFill(colNum);
+        avatar.drawPolygon([-radius, radius * 0.8, radius, 0, -radius, -radius * 0.8]);
+        avatar.endFill();
+        avatar.pivot.set(0, 0);
+        s.addChild(avatar);
+
+        const ui = createOverCharUI();
+        ui.name = 'overCharUi';
+        s.addChild(ui);
+        
         dynamicContainer.addChild(s);
         playersById.set(p.id, s);
       }
       const pos = worldToDisplayPos(p.x, p.y);
       s.x = pos.x;
       s.y = pos.y;
-      s.rotation = p.angle || 0;
+
+      const avatar = s.getChildByName('avatar');
+      if (avatar) {
+        avatar.rotation = p.angle || 0;
+      }
+
+      // Update UI
+      const uiContainer = s.getChildByName('overCharUi');
+      updateOverCharUI(uiContainer, p);
     }
     // remove missing players
     for (const id of Array.from(playersById.keys())) {
       if (!seen.has(id)) {
-        const g = playersById.get(id);
-        if (g && g.parent) g.parent.removeChild(g);
+        const container = playersById.get(id);
+        if (container) {
+          container.destroy({ children: true, texture: true, baseTexture: true });
+        }
         playersById.delete(id);
       }
+    }
+  }
+
+  function createOverCharUI() {
+    const ui = new PIXI.Container();
+
+    // Bar dimensions - scale with display cell size for visual consistency
+    const ratios = (REMOTE_SIM_PARAMS && REMOTE_SIM_PARAMS.entity_ratios) || {};
+    const barWidth = displayCellSize * (ratios.UI_BAR_WIDTH || 1.2);
+    const barHeight = displayCellSize * (ratios.UI_BAR_HEIGHT || 0.1);
+
+    // HP bar (background + foreground)
+    const hpBarBg = new PIXI.Graphics();
+    hpBarBg.beginFill(0x550000, 0.8);
+    hpBarBg.drawRect(0, 0, barWidth, barHeight);
+    hpBarBg.endFill();
+    ui.addChild(hpBarBg);
+
+    const hpBar = new PIXI.Graphics();
+    hpBar.beginFill(0xff0000);
+    hpBar.drawRect(0, 0, barWidth, barHeight);
+    hpBar.endFill();
+    hpBar.name = 'hpBar';
+    ui.addChild(hpBar);
+
+    // Energy bar
+    const energyBarBg = new PIXI.Graphics();
+    energyBarBg.beginFill(0x003355, 0.8);
+    energyBarBg.drawRect(0, 0, barWidth, barHeight);
+    energyBarBg.endFill();
+    energyBarBg.y = barHeight + 3;
+    ui.addChild(energyBarBg);
+
+    const energyBar = new PIXI.Graphics();
+    energyBar.beginFill(0x00ccff);
+    energyBar.drawRect(0, 0, barWidth, barHeight);
+    energyBar.endFill();
+    energyBar.y = barHeight + 3;
+    energyBar.name = 'energyBar';
+    ui.addChild(energyBar);
+    
+    // Set a vertical offset so it appears above the avatar
+    const uiOffsetRatio = ratios.UI_OFFSET || 0.8;
+    ui.y = -displayCellSize * uiOffsetRatio;
+    ui.x = -barWidth / 2;
+
+    return ui;
+  }
+
+  function updateOverCharUI(uiContainer, player) {
+    if (!uiContainer) return;
+    const hpBar = uiContainer.getChildByName('hpBar');
+    const energyBar = uiContainer.getChildByName('energyBar');
+
+    const ratios = (REMOTE_SIM_PARAMS && REMOTE_SIM_PARAMS.entity_ratios) || {};
+    const barWidth = displayCellSize * (ratios.UI_BAR_WIDTH || 1.2);
+    
+    if (hpBar) {
+        const hpPercent = (player.hp || 0) / 100;
+        hpBar.width = barWidth * hpPercent;
+    }
+    if (energyBar) {
+        const energyPercent = (player.energy || 0) / 100;
+        energyBar.width = barWidth * energyPercent;
     }
   }
 

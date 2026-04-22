@@ -71,9 +71,9 @@ VALUES (
             "BULLET_RADIUS": 0.12,
             "ENEMY_SPEED": 0.03,
             "ENEMY_VISION": 14.0,
-            "UI_BAR_WIDTH": 0.8,
-            "UI_BAR_HEIGHT": 0.1,
-            "UI_OFFSET": 0.5
+            "UI_BAR_WIDTH": 1.2,
+            "UI_BAR_HEIGHT": 0.15,
+            "UI_OFFSET": 0.8
         }
     }'::jsonb
 )

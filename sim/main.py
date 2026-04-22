@@ -145,7 +145,9 @@ def main():
                     "x": spawn["c"] * CELL_SIZE + CELL_SIZE / 2,
                     "y": spawn["r"] * CELL_SIZE + CELL_SIZE / 2,
                     "angle": 0.0,
-                    "color": "#00ffff"
+                    "color": "#00ffff",
+                    "hp": 100,
+                    "energy": 75
                 }
             ]
         }
@@ -262,6 +264,8 @@ def main():
             "y": py,
             "angle": 0.0,
             "color": player.get("neon_color", "#ffffff"),
+            "hp": 100,
+            "energy": 100
         }
 
         # Remove placeholder static test subject if present
