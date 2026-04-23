@@ -2,7 +2,6 @@ import logging
 import asyncio
 import os
 import math
-import requests
 import json
 from math import ceil
 
@@ -11,33 +10,6 @@ from state import WorldState
 from network import Network
 
 logger = logging.getLogger(__name__)
-
-# --- CRUD API Interaction ---
-
-async def async_upsert_controller(evt, crud_url):
-    def sync_post():
-        try:
-            r = requests.post(f"{crud_url}/controllers", json=evt, timeout=3)
-            return r.status_code
-        except Exception as e:
-            logger.error("upsert error: %s", e)
-            return None
-
-    await asyncio.to_thread(sync_post)
-
-
-async def async_update_player(player_id: int, payload: dict, crud_url: str):
-    """Asynchronously PATCH player data to the CRUD API."""
-    def sync_patch():
-        try:
-            r = requests.patch(f"{crud_url}/players/{player_id}", json=payload, timeout=3)
-            return r.status_code, r.json()
-        except Exception as e:
-            logger.error("patch player error: %s", e)
-            return None, None
-    
-    await asyncio.to_thread(sync_patch)
-
 
 # --- Game Logic ---
 
@@ -99,17 +71,8 @@ def find_clear_position(spawn_cell, map_data, players_list, cell_size, radius_pi
     return spawn_cell["c"] * cell_size + cell_size / 2, spawn_cell["r"] * cell_size + cell_size / 2
 
 
-async def async_instantiate_player(controller_id: str, state: WorldState, spawn: dict, map_data: dict, CELL_SIZE: int, crud_url: str):
-    def sync_get():
-        try:
-            r = requests.get(f"{crud_url}/players/by-controller/{controller_id}", timeout=5)
-            if r.status_code == 200:
-                return r.json()
-        except Exception as e:
-            logger.error("fetch/create player error: %s", e)
-        return None
-
-    player = await asyncio.to_thread(sync_get)
+async def async_instantiate_player(network: Network, controller_id: str, state: WorldState, spawn: dict, map_data: dict, cell_size: int):
+    player = await network.get_player_by_controller(controller_id)
     if not player:
         logger.warning("Failed to obtain player for controller %s", controller_id)
         return
@@ -117,8 +80,8 @@ async def async_instantiate_player(controller_id: str, state: WorldState, spawn:
     pid = f"p_{controller_id}"
 
     players = state.get_players()
-    default_radius = CELL_SIZE * 0.35
-    px, py = find_clear_position(spawn, map_data, players, CELL_SIZE, default_radius)
+    default_radius = cell_size* 0.35
+    px, py = find_clear_position(spawn, map_data, players, cell_size, default_radius)
 
 
     stats_data = player.get("stats", {})
@@ -162,7 +125,7 @@ async def async_instantiate_player(controller_id: str, state: WorldState, spawn:
     logger.info("Instantiated player %s for controller %s", pid, controller_id)
 
 
-async def async_execute_trigger_behavior(player_entity, rule, state: WorldState, crud_url):
+async def async_execute_trigger_behavior(network: Network, player_entity, rule, state: WorldState):
     """Runs the corresponding logic when a trigger's condition is met."""
     behavior_type = rule.get("behavior_type")
     payload = rule.get("payload", {})
@@ -191,15 +154,14 @@ async def async_execute_trigger_behavior(player_entity, rule, state: WorldState,
             player_entity["color"] = new_color
         
         if update_payload:
-            await async_update_player(db_id, update_payload, crud_url)
+            await network.update_player(db_id, update_payload)
 
 
 class Engine:
-    def __init__(self, state: WorldState, network: Network, map_data: dict, crud_url: str, spawn: dict, cell_size: int, player_speed: float, player_radius: float):
-        self.state = state
+    def __init__(self, network: Network, state: WorldState, map_data: dict, spawn: dict, cell_size: int, player_speed: float, player_radius: float):
         self.network = network
+        self.state = state
         self.map_data = map_data
-        self.crud_url = crud_url
         self.spawn = spawn
         self.cell_size = cell_size
         self.player_speed = player_speed
@@ -216,12 +178,12 @@ class Engine:
 
             if evt.get("connected") and cid not in self.state.known_controllers:
                 self.state.add_known_controller(cid)
-                asyncio.create_task(async_upsert_controller(evt, self.crud_url))
+                asyncio.create_task(self.network.upsert_controller(evt))
 
             buttons = evt.get("buttons", {})
             if buttons.get("start") and cid not in self.state.instantiated_players:
                 self.state.add_instantiated_player(cid)
-                asyncio.create_task(async_instantiate_player(cid, self.state, self.spawn, self.map_data, self.cell_size, self.crud_url))
+                asyncio.create_task(async_instantiate_player(self.network, cid, self.state, self.spawn, self.map_data, self.cell_size))
 
         # Physics and movements
         players_list = self.state.get_players()
@@ -268,7 +230,7 @@ class Engine:
                         last_south = self.state.get_player_trigger_state(pid).get("last_south_button", False)
                         current_south = buttons.get("south", False)
                         if current_south and not last_south:
-                            asyncio.create_task(async_execute_trigger_behavior(p, rule, self.state, self.crud_url))
+                            asyncio.create_task(async_execute_trigger_behavior(self.network, p, rule, self.state))
                         self.state.update_player_trigger_state(pid, "last_south_button", current_south)
 
                     elif mode == "TIME_HOLD":
@@ -278,7 +240,7 @@ class Engine:
                         normalized_progress = min(progress / threshold, 1.0)
                         p["active_trigger"] = {"type": "hold", "progress": normalized_progress}
                         if normalized_progress >= 1.0:
-                            asyncio.create_task(async_execute_trigger_behavior(p, rule, self.state, self.crud_url))
+                            asyncio.create_task(async_execute_trigger_behavior(self.network, p, rule, self.state))
                             self.state.update_player_trigger_state(pid, "progress", 0)
                     break
             
@@ -307,3 +269,5 @@ class Engine:
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:
             return
+        finally:
+            await self.network.close()

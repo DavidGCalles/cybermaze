@@ -1,21 +1,13 @@
-import requests
+import logging
+
+from network import Network
+
+logger = logging.getLogger(__name__)
 
 class MapParser:
-    def parse(self, grid, map_slug, crud_url):
+    async def parse(self, network: Network, grid, map_slug):
         # Fetch trigger rules from the database via the CRUD API
-        triggers_by_coord = {}
-        try:
-            url = f"{crud_url}/map_triggers/by-slug/{map_slug}"
-            resp = requests.get(url, timeout=3)
-            if resp.status_code == 200:
-                trigger_list = resp.json()
-                for t in trigger_list:
-                    triggers_by_coord[(t['cell_c'], t['cell_r'])] = t
-                print(f"[INFO] MapParser: Loaded {len(triggers_by_coord)} trigger(s) for '{map_slug}'")
-            else:
-                print(f"[WARNING] MapParser: Failed to get triggers for '{map_slug}', status: {resp.status_code}")
-        except Exception as e:
-            print(f"[WARNING] MapParser: Could not load triggers for map '{map_slug}': {e}")
+        triggers_by_coord = await network.fetch_map_triggers(map_slug)
 
         rows = len(grid)
         cols = len(grid[0]) if rows > 0 else 0
