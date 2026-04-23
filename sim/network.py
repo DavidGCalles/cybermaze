@@ -9,12 +9,13 @@ import nexus_client
 logger = logging.getLogger(__name__)
 
 class Network:
-    def __init__(self, crud_url: str, ws_port: int):
+    def __init__(self, crud_url: str, ws_port: int, map_data: dict):
         self.crud_url = crud_url
         self.ws_port = ws_port
         self.clients = set()
         self.controllers = {}
         self.session = aiohttp.ClientSession()
+        self.map_data = map_data
 
     async def close(self):
         await self.session.close()
@@ -102,6 +103,11 @@ class Network:
     async def ws_handler(self, websocket):
         self.clients.add(websocket)
         try:
+            initial_payload = {
+                "type": "INIT_MAP",
+                "map": self.map_data["map"]
+            }
+            await self._send_safe(websocket, json.dumps(initial_payload))
             await websocket.wait_closed()
         finally:
             self.clients.discard(websocket)

@@ -57,7 +57,7 @@ async def main():
     slug = os.getenv("HANGAR_SLUG", "hangar")
     ws_port = int(os.getenv("SIM_WS_PORT", "4000"))
     
-    network = Network(crud_url, ws_port)
+    network = Network(crud_url, ws_port, map_data={})
 
     try:
         logger.info("Requesting Hangar layout...")
@@ -73,6 +73,8 @@ async def main():
         parser = MapParser()
         map_data = await parser.parse(network, layout, slug)
         print_ascii_layout(layout)
+
+        network.map_data = map_data
 
         CELL_SIZE = int(os.getenv("SIM_CELL_SIZE", "32"))
 

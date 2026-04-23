@@ -11,9 +11,15 @@ class Grid:
     def is_valid(self, r, c):
         return r >= 0 and r < len(self.map) and c >= 0 and c < len(self.map[0])
 
+    def set_cell(self, r, c, value):
+        if self.is_valid(r,c):
+            self.map[r][c] = value
+            return True
+        return False
+
     def check_collision(self, x, y, radius):
         """
-        Return True if a circle at (x,y) with given radius intersects any solid cell.
+        Return cell value if a circle at (x,y) intersects any solid cell, else False.
         Solid cells are those with value 1 or 2 (match JS semantics).
         Coordinates are world/pixel coordinates; margins are taken into account.
         """
@@ -29,7 +35,7 @@ class Grid:
             for c in range(start_c, end_c + 1):
                 if not self.is_valid(r, c):
                     # out-of-bounds treated as solid
-                    return True
+                    return 1
                 val = self.map[r][c]
                 # 1: Wall, 2: Destructible, 6: Button Trigger (Terminal)
                 if val in [1, 2, 6]:
@@ -37,6 +43,6 @@ class Grid:
                     cell_y = r * self.cell_size
                     if (local_x + radius > cell_x and local_x - radius < cell_x + self.cell_size and
                             local_y + radius > cell_y and local_y - radius < cell_y + self.cell_size):
-                        return True
+                        return val, r, c
 
-        return False
+        return False, -1, -1

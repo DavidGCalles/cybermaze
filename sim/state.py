@@ -10,11 +10,11 @@ class WorldState:
         self.world = {
             "tick": 0,
             "state": "HANGAR_READY",
-            "map": map_data["map"],
             "entities": {
                 "players": [],
                 "bullets": []
-            }
+            },
+            "events": []
         }
         self.grid = Grid(map_data["map"], cell_size, margin_left=0, margin_top=0)
 

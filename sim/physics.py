@@ -34,7 +34,8 @@ def _calculate_new_position(player: dict[str, Any], players_list: list, grid, sp
 
     # --- Resolve X-axis ---
     next_x = final_x + dx
-    if not grid.check_collision(next_x, final_y, radius_px):
+    collided, r, c = grid.check_collision(next_x, final_y, radius_px)
+    if not collided:
         collides_with_player = False
         for other in players_list:
             if other["id"] == player["id"]:
@@ -47,7 +48,8 @@ def _calculate_new_position(player: dict[str, Any], players_list: list, grid, sp
 
     # --- Resolve Y-axis ---
     next_y = final_y + dy
-    if not grid.check_collision(final_x, next_y, radius_px):  # Use updated X for Y check
+    collided, r, c = grid.check_collision(final_x, next_y, radius_px)
+    if not collided:  # Use updated X for Y check
         collides_with_player = False
         for other in players_list:
             if other["id"] == player["id"]:
@@ -127,8 +129,16 @@ def process_bullet_movements(world: dict[str, Any], grid, speed: float, radius_p
         bullet["y"] += dy
 
         # Check for wall collisions
-        if grid.check_collision(bullet["x"], bullet["y"], radius_px):
+        collided, r, c = grid.check_collision(bullet["x"], bullet["y"], radius_px)
+        if collided:
             bullets_to_remove.append(bullet)
+            if collided == 2: # Destructible wall
+                grid.set_cell(r, c, 0)
+                world["events"].append({
+                    "event": "WALL_DESTROYED",
+                    "r": r,
+                    "c": c
+                })
 
     # Remove bullets that have collided
     if bullets_to_remove:

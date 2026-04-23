@@ -21,8 +21,14 @@
     socket.addEventListener('message', (ev) => {
       try {
         const payload = JSON.parse(ev.data);
-        if (window.CyberRenderer && typeof window.CyberRenderer.applyPayload === 'function') {
-          window.CyberRenderer.applyPayload(payload);
+        if (payload.type === 'INIT_MAP') {
+          if (window.CyberRenderer && typeof window.CyberRenderer.setMap === 'function') {
+            window.CyberRenderer.setMap(payload.map);
+          }
+        } else {
+          if (window.CyberRenderer && typeof window.CyberRenderer.applyPayload === 'function') {
+            window.CyberRenderer.applyPayload(payload);
+          }
         }
       } catch (e) {
         console.error('Invalid payload', e);
