@@ -4,8 +4,6 @@ from grid import Grid
 
 class WorldState:
     def __init__(self, map_data, cell_size, spawn):
-        self.clients = set()
-        self.controllers = {}
         self.known_controllers = set()
         self.instantiated_players = set()
         self.player_trigger_states = {}
@@ -24,15 +22,6 @@ class WorldState:
             }
         }
         self.grid = Grid(map_data["map"], cell_size, margin_left=0, margin_top=0)
-
-    def add_client(self, ws):
-        self.clients.add(ws)
-
-    def remove_client(self, ws):
-        self.clients.discard(ws)
-
-    def update_controller(self, cid, event):
-        self.controllers[cid] = event
 
     def add_known_controller(self, cid):
         self.known_controllers.add(cid)
@@ -72,19 +61,3 @@ class WorldState:
 
     def remove_player_trigger_state(self, pid):
         self.player_trigger_states.pop(pid, None)
-
-    async def broadcast(self):
-        payload = json.dumps(self.world)
-        to_remove = []
-        coros = [_send_safe(ws, payload, to_remove) for ws in list(self.clients)]
-        if coros:
-            await asyncio.gather(*coros)
-        for ws in to_remove:
-            self.remove_client(ws)
-
-async def _send_safe(ws, payload, to_remove):
-    try:
-        await ws.send(payload)
-    except Exception:
-        to_remove.append(ws)
-
