@@ -13,6 +13,7 @@ import nexus_client
 from map_parser import MapParser
 from grid import Grid
 from physics import process_player_movements
+from state import WorldState
 
 def build_crud_url():
     url = os.getenv("SIM_URL")
@@ -146,7 +147,7 @@ def find_clear_position(spawn_cell, map_data, players_list, cell_size, radius_pi
     return spawn_cell["c"] * cell_size + cell_size / 2, spawn_cell["r"] * cell_size + cell_size / 2
 
 
-async def async_instantiate_player(controller_id: str, state: dict, spawn: dict, map_data: dict, CELL_SIZE: int, crud_url: str):
+async def async_instantiate_player(controller_id: str, state: WorldState, spawn: dict, map_data: dict, CELL_SIZE: int, crud_url: str):
     def sync_get():
         try:
             r = requests.get(f"{crud_url}/players/by-controller/{controller_id}", timeout=5)
@@ -163,9 +164,10 @@ async def async_instantiate_player(controller_id: str, state: dict, spawn: dict,
 
     pid = f"p_{controller_id}"
 
-    players = state["world"]["entities"].setdefault("players", [])
+    players = state.get_players()
     default_radius = CELL_SIZE * 0.35
     px, py = find_clear_position(spawn, map_data, players, CELL_SIZE, default_radius)
+
 
     stats_data = player.get("stats", {})
     if isinstance(stats_data, str):
@@ -204,11 +206,11 @@ async def async_instantiate_player(controller_id: str, state: dict, spawn: dict,
 
     ent["x"] = px
     ent["y"] = py
-    players.append(ent)
+    state.add_player(ent)
     print(f"[SIM] Instantiated player {pid} for controller {controller_id}")
 
 
-async def async_execute_trigger_behavior(player_entity, rule, state, crud_url):
+async def async_execute_trigger_behavior(player_entity, rule, state: WorldState, crud_url):
     """Runs the corresponding logic when a trigger's condition is met."""
     behavior_type = rule.get("behavior_type")
     payload = rule.get("payload", {})
@@ -223,7 +225,7 @@ async def async_execute_trigger_behavior(player_entity, rule, state, crud_url):
     if behavior_type == "CHANGE_PHASE":
         target_phase = payload.get("target_phase")
         if target_phase:
-            state["world"]["state"] = target_phase
+            state.set_game_phase(target_phase)
 
     elif behavior_type == "EQUIP_LOADOUT":
         db_id = player_entity.get("db_id")
@@ -242,37 +244,38 @@ async def async_execute_trigger_behavior(player_entity, rule, state, crud_url):
 
 # --- Main Loop ---
 
-async def broadcaster(state, map_data, spawn, CELL_SIZE, PLAYER_SPEED, PLAYER_RADIUS, crud_url):
+async def broadcaster(state: WorldState, map_data, spawn, CELL_SIZE, PLAYER_SPEED, PLAYER_RADIUS, crud_url):
     interval = 1.0 / 60.0  # 60Hz
     try:
         while True:
-            state["world"]["tick"] += 1
+            state.increment_tick()
 
             # Handle controller inputs
-            for cid, info in list(state["controllers"].items()):
+            for cid, info in list(state.controllers.items()):
                 evt = info.get("event") if isinstance(info, dict) else info
                 if not isinstance(evt, dict):
                     continue
 
-                if evt.get("connected") and cid not in state["known_controllers"]:
-                    state["known_controllers"].add(cid)
+                if evt.get("connected") and cid not in state.known_controllers:
+                    state.add_known_controller(cid)
                     asyncio.create_task(async_upsert_controller(evt, crud_url))
 
                 buttons = evt.get("buttons", {})
-                if buttons.get("start") and cid not in state["instantiated_players"]:
-                    state["instantiated_players"].add(cid)
+                if buttons.get("start") and cid not in state.instantiated_players:
+                    state.add_instantiated_player(cid)
                     asyncio.create_task(async_instantiate_player(cid, state, spawn, map_data, CELL_SIZE, crud_url))
 
             # Physics and movements
-            players_list = state["world"]["entities"].get("players", [])
+            players_list = state.get_players()
             deadzone = float(os.getenv("SIM_DEADZONE", "0.1"))
             default_speed = CELL_SIZE * 0.09
             default_radius = CELL_SIZE * 0.35
             speed = PLAYER_SPEED if PLAYER_SPEED is not None else default_speed
             radius_px = PLAYER_RADIUS if PLAYER_RADIUS is not None else default_radius
             
-            process_player_movements(state["world"], state["controllers"], state["instantiated_players"],
-                                     state["grid"], speed, radius_px, deadzone)
+            process_player_movements(state.world, state.controllers, state.instantiated_players,
+                                     state.grid, speed, radius_px, deadzone)
+
 
             # Process triggers
             trigger_zones = map_data.get("triggerZones", [])
@@ -297,40 +300,40 @@ async def broadcaster(state, map_data, spawn, CELL_SIZE, PLAYER_SPEED, PLAYER_RA
                     if (distance_x**2 + distance_y**2) < (interaction_radius**2):
                         player_in_zone = True
                         pid = p["id"]
-                        if pid not in state["player_trigger_states"]:
-                            state["player_trigger_states"][pid] = {}
+                        if pid not in state.player_trigger_states:
+                            state.player_trigger_states[pid] = {}
 
                         cid = pid.split('_')[1]
-                        buttons = state.get("controllers", {}).get(cid, {}).get("event", {}).get("buttons", {})
+                        buttons = state.controllers.get(cid, {}).get("event", {}).get("buttons", {})
                         
                         if mode == "BUTTON_EDGE":
                             p["active_trigger"] = {"type": "button", "label": "SOUTH"}
-                            last_south = state["player_trigger_states"][pid].get("last_south_button", False)
+                            last_south = state.get_player_trigger_state(pid).get("last_south_button", False)
                             current_south = buttons.get("south", False)
                             if current_south and not last_south:
                                 asyncio.create_task(async_execute_trigger_behavior(p, rule, state, crud_url))
-                            state["player_trigger_states"][pid]["last_south_button"] = current_south
+                            state.update_player_trigger_state(pid, "last_south_button", current_south)
 
                         elif mode == "TIME_HOLD":
-                            progress = state["player_trigger_states"][pid].get("progress", 0) + 1
-                            state["player_trigger_states"][pid]["progress"] = progress
+                            progress = state.get_player_trigger_state(pid).get("progress", 0) + 1
+                            state.update_player_trigger_state(pid, "progress", progress)
                             threshold = rule.get("activation_threshold", 1)
                             normalized_progress = min(progress / threshold, 1.0)
                             p["active_trigger"] = {"type": "hold", "progress": normalized_progress}
                             if normalized_progress >= 1.0:
                                 asyncio.create_task(async_execute_trigger_behavior(p, rule, state, crud_url))
-                                state["player_trigger_states"][pid]["progress"] = 0
+                                state.update_player_trigger_state(pid, "progress", 0)
                         break
                 
                 if not player_in_zone:
                     pid = p.get("id")
-                    if pid and pid in state["player_trigger_states"]:
-                        state["player_trigger_states"].pop(pid, None)
+                    if pid and pid in state.player_trigger_states:
+                        state.remove_player_trigger_state(pid)
             
             # Animate dummy player if present
             for p in players_list:
                 if p.get("id") == "p_01":
-                    t = state["world"]["tick"] / 60.0
+                    t = state.world["tick"] / 60.0
                     base_x = spawn["c"] * CELL_SIZE + CELL_SIZE / 2
                     base_y = spawn["r"] * CELL_SIZE + CELL_SIZE / 2
                     radius = CELL_SIZE * 0.6
@@ -339,13 +342,13 @@ async def broadcaster(state, map_data, spawn, CELL_SIZE, PLAYER_SPEED, PLAYER_RA
                     break
 
             # Broadcast world state
-            payload = json.dumps(state["world"])
+            payload = json.dumps(state.world)
             to_remove = []
-            coros = [_send_safe(ws, payload, to_remove) for ws in list(state["clients"])]
+            coros = [_send_safe(ws, payload, to_remove) for ws in list(state.clients)]
             if coros:
                 await asyncio.gather(*coros)
             for ws in to_remove:
-                state["clients"].discard(ws)
+                state.remove_client(ws)
 
             await asyncio.sleep(interval)
     except asyncio.CancelledError:
@@ -354,8 +357,8 @@ async def broadcaster(state, map_data, spawn, CELL_SIZE, PLAYER_SPEED, PLAYER_RA
 
 # --- Server Setup ---
 
-async def ws_handler(websocket, path, state):
-    state["clients"].add(websocket)
+async def ws_handler(websocket, path, state: WorldState):
+    state.add_client(websocket)
     try:
         async for _ in websocket:
             # Authoritative server, ignore client messages
@@ -363,19 +366,22 @@ async def ws_handler(websocket, path, state):
     except websockets.ConnectionClosed:
         pass
     finally:
-        state["clients"].discard(websocket)
+        state.remove_client(websocket)
 
 
-async def serve(state, map_data, spawn, CELL_SIZE, PLAYER_SPEED, PLAYER_RADIUS, ws_port, crud_url):
+async def serve(state: WorldState, map_data, CELL_SIZE, PLAYER_SPEED, PLAYER_RADIUS, ws_port, crud_url):
     async def handler_wrapper(*args):
         websocket = args[0] if args else None
         path = args[1] if len(args) > 1 else "/"
         if websocket:
             await ws_handler(websocket, path, state)
 
+    spawn = next((s for s in map_data.get("playerSpawns", []) if s), 
+                 {"c": len(map_data["map"][0]) // 2, "r": len(map_data["map"]) // 2})
+
     async with websockets.serve(handler_wrapper, "0.0.0.0", ws_port):
         nexus_uri = os.getenv("NEXUS_WS_URI", "ws://host.docker.internal:8765")
-        ctask = asyncio.create_task(nexus_client.run_nexus_client(state["controllers"], nexus_uri))
+        ctask = asyncio.create_task(nexus_client.run_nexus_client(state.controllers, nexus_uri))
         btask = asyncio.create_task(broadcaster(state, map_data, spawn, CELL_SIZE, PLAYER_SPEED, PLAYER_RADIUS, crud_url))
         
         try:
@@ -433,35 +439,12 @@ def main():
     spawn = next((s for s in map_data.get("playerSpawns", []) if s), 
                  {"c": len(map_data["map"][0]) // 2, "r": len(map_data["map"]) // 2})
 
-    world_state = {
-        "tick": 0,
-        "state": "HANGAR_READY",
-        "map": map_data["map"],
-        "entities": {
-            "players": [{
-                "id": "p_01", "x": spawn["c"] * CELL_SIZE + CELL_SIZE / 2,
-                "y": spawn["r"] * CELL_SIZE + CELL_SIZE / 2, "angle": 0.0,
-                "color": "#00ffff", "hp": 100, "energy": 75,
-                "max_hp": 100, "max_energy": 100
-            }]
-        }
-    }
+    state = WorldState(map_data, CELL_SIZE, spawn)
 
-    grid = Grid(map_data["map"], CELL_SIZE, margin_left=0, margin_top=0)
-
-    state = {
-        "clients": set(),
-        "world": world_state,
-        "grid": grid,
-        "controllers": {},
-        "known_controllers": set(),
-        "instantiated_players": set(),
-        "player_trigger_states": {}
-    }
 
     print(f"[READY] Parsed map successfully. Starting WebSocket server on port {ws_port}")
     try:
-        asyncio.run(serve(state, map_data, spawn, CELL_SIZE, PLAYER_SPEED, PLAYER_RADIUS, ws_port, crud_url))
+        asyncio.run(serve(state, map_data, CELL_SIZE, PLAYER_SPEED, PLAYER_RADIUS, ws_port, crud_url))
     except KeyboardInterrupt:
         pass
 
