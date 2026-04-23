@@ -166,8 +166,37 @@ class Engine:
         self.cell_size = cell_size
         self.player_speed = player_speed
         self.player_radius = player_radius
+        self.dummy_player_instantiated = False
+
+    async def async_instantiate_dummy_player(self):
+        pid = "p_x"
+        cid = "x"
+        
+        players = self.state.get_players()
+        default_radius = self.cell_size * 0.35
+        px, py = find_clear_position(self.spawn, self.map_data, players, self.cell_size, default_radius)
+
+        ent = {
+            "id": pid,
+            "db_id": None,
+            "x": px,
+            "y": py,
+            "angle": 0.0,
+            "color": "#00ffff",
+            "hp": 100,
+            "energy": 100,
+            "max_hp": 100,
+            "max_energy": 100,
+        }
+        self.state.add_player(ent)
+        self.state.add_instantiated_player(cid)
+        self.dummy_player_instantiated = True
+        logger.info("Instantiated dummy player %s", pid)
 
     async def tick(self):
+        if not self.dummy_player_instantiated:
+            await self.async_instantiate_dummy_player()
+
         self.state.increment_tick()
 
         # Handle controller inputs
@@ -192,6 +221,18 @@ class Engine:
         default_radius = self.cell_size * 0.35
         speed = self.player_speed if self.player_speed is not None else default_speed
         radius_px = self.player_radius if self.player_radius is not None else default_radius
+        
+        # Auto-input for dummy player
+        if 'x' in self.state.instantiated_players:
+            t = self.state.world["tick"] / 60.0
+            lx = -math.sin(t)
+            ly = -math.cos(t) # Y is negated in _get_player_inputs
+            self.network.controllers['x'] = {
+                "event": {
+                    "axes": {"lx": lx, "ly": ly, "rx": 0, "ry": 0},
+                    "buttons": {}
+                }
+            }
         
         process_player_movements(self.state.world, self.network.controllers, self.state.instantiated_players,
                                     self.state.grid, speed, radius_px, deadzone)
@@ -248,17 +289,7 @@ class Engine:
                 pid = p.get("id")
                 if pid and pid in self.state.player_trigger_states:
                     self.state.remove_player_trigger_state(pid)
-        
-        # Animate dummy player if present
-        for p in players_list:
-            if p.get("id") == "p_01":
-                t = self.state.world["tick"] / 60.0
-                base_x = self.spawn["c"] * self.cell_size + self.cell_size / 2
-                base_y = self.spawn["r"] * self.cell_size + self.cell_size / 2
-                radius = self.cell_size * 0.6
-                p["x"] = base_x + radius * math.cos(t)
-                p["y"] = base_y + radius * math.sin(t)
-                break
+
 
     async def run(self):
         interval = 1.0 / 60.0  # 60Hz

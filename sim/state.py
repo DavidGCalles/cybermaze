@@ -11,12 +11,7 @@ class WorldState:
             "state": "HANGAR_READY",
             "map": map_data["map"],
             "entities": {
-                "players": [{
-                    "id": "p_01", "x": spawn["c"] * cell_size + cell_size / 2,
-                    "y": spawn["r"] * cell_size + cell_size / 2, "angle": 0.0,
-                    "color": "#00ffff", "hp": 100, "energy": 75,
-                    "max_hp": 100, "max_energy": 100
-                }]
+                "players": []
             }
         }
         self.grid = Grid(map_data["map"], cell_size, margin_left=0, margin_top=0)
