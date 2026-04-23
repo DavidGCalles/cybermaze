@@ -105,3 +105,32 @@ def process_player_movements(world: dict[str, Any], controllers: dict[str, Any],
         )
 
     return
+
+def process_bullet_movements(world: dict[str, Any], grid, speed: float, radius_px: float):
+    """
+    Update bullet positions and check for collisions.
+    - world: the world state dict containing entities.bullets list
+    - grid: server-side Grid instance with check_collision(x,y,radius)
+    - speed: pixels per tick base speed for bullets
+    - radius_px: bullet collision radius in pixels
+    """
+    bullets_list = world.get("entities", {}).get("bullets", [])
+    bullets_to_remove = []
+
+    for bullet in bullets_list:
+        # Calculate movement vector
+        dx = math.cos(bullet["angle"]) * speed
+        dy = math.sin(bullet["angle"]) * speed
+        
+        # Update position
+        bullet["x"] += dx
+        bullet["y"] += dy
+
+        # Check for wall collisions
+        if grid.check_collision(bullet["x"], bullet["y"], radius_px):
+            bullets_to_remove.append(bullet)
+
+    # Remove bullets that have collided
+    if bullets_to_remove:
+        world["entities"]["bullets"] = [b for b in bullets_list if b not in bullets_to_remove]
+

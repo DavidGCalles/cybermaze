@@ -5,7 +5,7 @@ import math
 import json
 from math import ceil
 
-from physics import process_player_movements
+from physics import process_player_movements, process_bullet_movements
 from state import WorldState
 from network import Network
 
@@ -112,7 +112,7 @@ async def async_instantiate_player(network: Network, controller_id: str, state: 
     }
 
     for i, p in enumerate(list(players)):
-        if p.get("id") == "p_01":
+        if p.get("id") == "p_x":
             try:
                 players.pop(i)
             except Exception:
@@ -167,6 +167,9 @@ class Engine:
         self.player_speed = player_speed
         self.player_radius = player_radius
         self.dummy_player_instantiated = False
+        self.params = {}
+        self.params_task = None
+
 
     async def async_instantiate_dummy_player(self):
         pid = "p_x"
@@ -193,6 +196,18 @@ class Engine:
         self.dummy_player_instantiated = True
         logger.info("Instantiated dummy player %s", pid)
 
+    async def async_fetch_and_apply_params(self):
+        """Periodically fetches dynamic parameters from the CRUD backend."""
+        while True:
+            try:
+                params = await self.network.fetch_params()
+                if params:
+                    self.params = params
+                    logger.info("Updated dynamic params: %s", self.params)
+            except Exception as e:
+                logger.error("Failed to fetch dynamic params: %s", e, exc_info=True)
+            await asyncio.sleep(30)
+
     async def tick(self):
         if not self.dummy_player_instantiated:
             await self.async_instantiate_dummy_player()
@@ -208,6 +223,34 @@ class Engine:
             if evt.get("connected") and cid not in self.state.known_controllers:
                 self.state.add_known_controller(cid)
                 asyncio.create_task(self.network.upsert_controller(evt))
+
+            # Shooting logic (debounce per trigger press)
+            axes = evt.get("axes", {})
+            rt_axis = axes.get("rt", 0)
+            pid = f"p_{cid}"
+            
+            last_rt_pressed = self.state.get_player_shooting_state(pid).get("last_rt_pressed", False)
+            current_rt_pressed = rt_axis > 0.5
+
+            if current_rt_pressed and not last_rt_pressed:
+                player = next((p for p in self.state.get_players() if p.get("id") == pid), None)
+                if player:
+                    energy_cost = self.params.get("entity_ratios", {}).get("BULLET_ENERGY_COST", 20)
+                    if player["energy"] >= energy_cost:
+                        player["energy"] -= energy_cost
+                        bullet_id = f"b_{cid}_{self.state.world['tick']}"
+                        new_bullet = {
+                            "id": bullet_id,
+                            "owner_id": pid,
+                            "x": player["x"],
+                            "y": player["y"],
+                            "angle": player["angle"],
+                            "color": player["color"],
+                        }
+                        self.state.world["entities"]["bullets"].append(new_bullet)
+            
+            self.state.update_player_shooting_state(pid, "last_rt_pressed", current_rt_pressed)
+
 
             buttons = evt.get("buttons", {})
             if buttons.get("start") and cid not in self.state.instantiated_players:
@@ -236,6 +279,15 @@ class Engine:
         
         process_player_movements(self.state.world, self.network.controllers, self.state.instantiated_players,
                                     self.state.grid, speed, radius_px, deadzone)
+
+        # Process bullet movements
+        ratios = self.params.get("entity_ratios", {})
+        bullet_speed_ratio = ratios.get("BULLET_SPEED", 0.2)
+        bullet_radius_ratio = ratios.get("BULLET_RADIUS", 0.1)
+        bullet_speed = self.cell_size * bullet_speed_ratio
+        bullet_radius = self.cell_size * bullet_radius_ratio
+        process_bullet_movements(self.state.world, self.state.grid, bullet_speed, bullet_radius)
+
 
         # Process triggers
         trigger_zones = self.map_data.get("triggerZones", [])
@@ -292,6 +344,7 @@ class Engine:
 
 
     async def run(self):
+        self.params_task = asyncio.create_task(self.async_fetch_and_apply_params())
         interval = 1.0 / 60.0  # 60Hz
         try:
             while True:
@@ -301,4 +354,6 @@ class Engine:
         except asyncio.CancelledError:
             return
         finally:
+            if self.params_task:
+                self.params_task.cancel()
             await self.network.close()

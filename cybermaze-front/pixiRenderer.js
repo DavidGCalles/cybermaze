@@ -43,6 +43,7 @@
   let marginLeft = 0, marginTop = 0;
   let simCellSize = DEFAULT_SIM_CELL;
   const playersById = new Map();
+  const bulletsById = new Map();
 
   // Colors (match legacy)
   const COLORS = {
@@ -381,6 +382,42 @@
     // Update dynamic objects
     const players = (payload.entities && payload.entities.players) ? payload.entities.players : [];
     updatePlayers(players);
+
+    const bullets = (payload.entities && payload.entities.bullets) ? payload.entities.bullets : [];
+    updateBullets(bullets);
+  }
+
+  function updateBullets(bullets) {
+    const seen = new Set();
+    for (const b of bullets) {
+      seen.add(b.id);
+      let s = bulletsById.get(b.id);
+      if (!s) {
+        // create
+        s = new PIXI.Graphics();
+        const bulletRadiusRatio = (REMOTE_SIM_PARAMS && REMOTE_SIM_PARAMS.entity_ratios) ? REMOTE_SIM_PARAMS.entity_ratios.BULLET_RADIUS : 0.1;
+        const radius = Math.max(2, displayCellSize * bulletRadiusRatio);
+        const colNum = (typeof b.color === 'string' && b.color.startsWith('#')) ? parseInt(b.color.slice(1), 16) : 0x00ffff;
+        s.beginFill(colNum);
+        s.drawCircle(0, 0, radius);
+        s.endFill();
+        dynamicContainer.addChild(s);
+        bulletsById.set(b.id, s);
+      }
+      const pos = worldToDisplayPos(b.x, b.y);
+      s.x = pos.x;
+      s.y = pos.y;
+    }
+    // remove missing bullets
+    for (const id of Array.from(bulletsById.keys())) {
+      if (!seen.has(id)) {
+        const container = bulletsById.get(id);
+        if (container) {
+          container.destroy({ children: true, texture: true, baseTexture: true });
+        }
+        bulletsById.delete(id);
+      }
+    }
   }
 
   // Create the PIXI app and containers. Called by external code (e.g. ws client).

@@ -5,13 +5,15 @@ class WorldState:
         self.known_controllers = set()
         self.instantiated_players = set()
         self.player_trigger_states = {}
+        self.player_shooting_states = {}
 
         self.world = {
             "tick": 0,
             "state": "HANGAR_READY",
             "map": map_data["map"],
             "entities": {
-                "players": []
+                "players": [],
+                "bullets": []
             }
         }
         self.grid = Grid(map_data["map"], cell_size, margin_left=0, margin_top=0)
@@ -31,7 +33,7 @@ class WorldState:
     def remove_dummy_player(self):
         players = self.get_players()
         for i, p in enumerate(list(players)):
-            if p.get("id") == "p_01":
+            if p.get("id") == "p_x":
                 try:
                     players.pop(i)
                 except Exception:
@@ -54,3 +56,11 @@ class WorldState:
 
     def remove_player_trigger_state(self, pid):
         self.player_trigger_states.pop(pid, None)
+
+    def update_player_shooting_state(self, pid, key, value):
+        if pid not in self.player_shooting_states:
+            self.player_shooting_states[pid] = {}
+        self.player_shooting_states[pid][key] = value
+
+    def get_player_shooting_state(self, pid):
+        return self.player_shooting_states.get(pid, {})
