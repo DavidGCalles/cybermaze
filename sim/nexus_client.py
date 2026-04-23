@@ -1,7 +1,10 @@
+import logging
 import asyncio
 import json
 import time
 import websockets
+
+logger = logging.getLogger(__name__)
 
 
 async def run_nexus_client(latest_inputs: dict, uri: str):
@@ -14,7 +17,7 @@ async def run_nexus_client(latest_inputs: dict, uri: str):
     while True:
         try:
             async with websockets.connect(uri) as ws:
-                print(f"[NEXUS] Connected to {uri}")
+                logger.info(f"Connected to {uri}")
                 reconnect_delay = 1.0
                 async for msg in ws:
                     ts = time.time()
@@ -39,13 +42,13 @@ async def run_nexus_client(latest_inputs: dict, uri: str):
                     latest_inputs[cid] = {"ts": ts, "event": data}
 
                     # Print the event flow to console (DoD requirement)
-                    #print(f"[NEXUS][{cid}] {data}")
+                    #logger.debug(f"[{cid}] {data}")
 
         except asyncio.CancelledError:
-            print("[NEXUS] Cancelled, shutting down Nexus client")
+            logger.info("Cancelled, shutting down Nexus client")
             raise
         except Exception as e:
-            print(f"[NEXUS] Connection error: {e}. Reconnecting in {reconnect_delay}s")
+            logger.error(f"Connection error: {e}. Reconnecting in {reconnect_delay}s")
             await asyncio.sleep(reconnect_delay)
             # Exponential backoff capped at 10s
             reconnect_delay = min(reconnect_delay * 2, 10.0)

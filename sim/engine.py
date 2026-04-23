@@ -1,3 +1,4 @@
+import logging
 import asyncio
 import os
 import math
@@ -9,6 +10,8 @@ from physics import process_player_movements
 from state import WorldState
 from network import Network
 
+logger = logging.getLogger(__name__)
+
 # --- CRUD API Interaction ---
 
 async def async_upsert_controller(evt, crud_url):
@@ -17,7 +20,7 @@ async def async_upsert_controller(evt, crud_url):
             r = requests.post(f"{crud_url}/controllers", json=evt, timeout=3)
             return r.status_code
         except Exception as e:
-            print(f"[SIM][CRUD] upsert error: {e}")
+            logger.error(f"upsert error: {e}")
             return None
 
     await asyncio.to_thread(sync_post)
@@ -30,7 +33,7 @@ async def async_update_player(player_id: int, payload: dict, crud_url: str):
             r = requests.patch(f"{crud_url}/players/{player_id}", json=payload, timeout=3)
             return r.status_code, r.json()
         except Exception as e:
-            print(f"[SIM][CRUD] patch player error: {e}")
+            logger.error(f"patch player error: {e}")
             return None, None
     
     await asyncio.to_thread(sync_patch)
@@ -103,12 +106,12 @@ async def async_instantiate_player(controller_id: str, state: WorldState, spawn:
             if r.status_code == 200:
                 return r.json()
         except Exception as e:
-            print(f"[SIM][CRUD] fetch/create player error: {e}")
+            logger.error(f"fetch/create player error: {e}")
         return None
 
     player = await asyncio.to_thread(sync_get)
     if not player:
-        print(f"[SIM] Failed to obtain player for controller {controller_id}")
+        logger.warning(f"Failed to obtain player for controller {controller_id}")
         return
 
     pid = f"p_{controller_id}"
@@ -156,7 +159,7 @@ async def async_instantiate_player(controller_id: str, state: WorldState, spawn:
     ent["x"] = px
     ent["y"] = py
     state.add_player(ent)
-    print(f"[SIM] Instantiated player {pid} for controller {controller_id}")
+    logger.info(f"Instantiated player {pid} for controller {controller_id}")
 
 
 async def async_execute_trigger_behavior(player_entity, rule, state: WorldState, crud_url):
@@ -166,7 +169,7 @@ async def async_execute_trigger_behavior(player_entity, rule, state: WorldState,
     if not behavior_type:
         return
 
-    print(f"[SIM] Executing trigger for {player_entity['id']}: {behavior_type} with {payload}")
+    logger.info(f"Executing trigger for {player_entity['id']}: {behavior_type} with {payload}")
 
     if isinstance(payload, str):
         payload = json.loads(payload)

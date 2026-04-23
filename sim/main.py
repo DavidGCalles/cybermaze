@@ -1,3 +1,4 @@
+import logging
 import functools
 import os
 import sys
@@ -17,6 +18,9 @@ from physics import process_player_movements
 from state import WorldState
 from network import Network
 from engine import Engine
+from logger import setup_logging
+
+logger = logging.getLogger(__name__)
 def build_crud_url():
     url = os.getenv("SIM_URL")
     if not url:
@@ -27,13 +31,13 @@ def build_crud_url():
 
  
 def print_ascii_layout(layout_lines):
-    print("[LOADED] Hangar layout:")
+    logger.info("Hangar layout:")
     for line in layout_lines:
-        print(line)
+        logger.info(line)
 
 
 def fail(msg, code=1):
-    print(f"[ERROR] {msg}")
+    logger.critical(msg)
     sys.exit(code)
 
 
@@ -58,11 +62,12 @@ def extract_layout_from_body(body):
 # --- Server Setup ---
 
 def main():
+    setup_logging()
     crud_url = build_crud_url()
     slug = os.getenv("HANGAR_SLUG", "hangar")
     target = f"{crud_url}/maps/{slug}"
 
-    print("[WAITING] Requesting Hangar layout...")
+    logger.info("Requesting Hangar layout...")
     try:
         resp = requests.get(target, timeout=10)
     except Exception as e:
@@ -78,7 +83,7 @@ def main():
 
     layout = extract_layout_from_body(body)
     if not layout or not isinstance(layout, list):
-        print(f"[DEBUG] Full CRUD response: {json.dumps(body)}")
+        logger.debug(f"Full CRUD response: {json.dumps(body)}")
         fail("No valid 'layout' array present in CRUD response")
 
     parser = MapParser()
@@ -109,7 +114,7 @@ def main():
     network = Network(ws_port)
     engine = Engine(state, network, map_data, crud_url, spawn, CELL_SIZE, PLAYER_SPEED, PLAYER_RADIUS)
 
-    print(f"[READY] Parsed map successfully. Starting WebSocket server on port {ws_port}")
+    logger.info(f"Parsed map successfully. Starting WebSocket server on port {ws_port}")
     try:
         asyncio.run(network.run(engine.run))
     except KeyboardInterrupt:
