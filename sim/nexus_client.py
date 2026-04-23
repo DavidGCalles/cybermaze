@@ -17,7 +17,7 @@ async def run_nexus_client(latest_inputs: dict, uri: str):
     while True:
         try:
             async with websockets.connect(uri) as ws:
-                logger.info(f"Connected to {uri}")
+                logger.info("Connected to %s", uri)
                 reconnect_delay = 1.0
                 async for msg in ws:
                     ts = time.time()
@@ -48,7 +48,7 @@ async def run_nexus_client(latest_inputs: dict, uri: str):
             logger.info("Cancelled, shutting down Nexus client")
             raise
         except Exception as e:
-            logger.error(f"Connection error: {e}. Reconnecting in {reconnect_delay}s")
+            logger.error("Connection error: %s. Reconnecting in %ss", e, reconnect_delay)
             await asyncio.sleep(reconnect_delay)
             # Exponential backoff capped at 10s
             reconnect_delay = min(reconnect_delay * 2, 10.0)

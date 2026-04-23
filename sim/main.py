@@ -1,20 +1,11 @@
 import logging
-import functools
 import os
 import sys
-import time
 import asyncio
 import json
-import math
-from math import ceil
-
 import requests
-import websockets
-import nexus_client
 
 from map_parser import MapParser
-from grid import Grid
-from physics import process_player_movements
 from state import WorldState
 from network import Network
 from engine import Engine
@@ -36,8 +27,8 @@ def print_ascii_layout(layout_lines):
         logger.info(line)
 
 
-def fail(msg, code=1):
-    logger.critical(msg)
+def fail(msg, *args, code=1):
+    logger.critical(msg, *args)
     sys.exit(code)
 
 
@@ -71,19 +62,19 @@ def main():
     try:
         resp = requests.get(target, timeout=10)
     except Exception as e:
-        fail(f"Failed to contact CRUD at {target}: {e}")
+        fail("Failed to contact CRUD at %s: %s", target, e)
 
     if resp.status_code != 200:
-        fail(f"CRUD returned status {resp.status_code} when requesting {target}")
+        fail("CRUD returned status %s when requesting %s", resp.status_code, target)
 
     try:
         body = resp.json()
     except Exception as e:
-        fail(f"Invalid JSON response from CRUD: {e}")
+        fail("Invalid JSON response from CRUD: %s", e)
 
     layout = extract_layout_from_body(body)
     if not layout or not isinstance(layout, list):
-        logger.debug(f"Full CRUD response: {json.dumps(body)}")
+        logger.debug("Full CRUD response: %s", json.dumps(body))
         fail("No valid 'layout' array present in CRUD response")
 
     parser = MapParser()
@@ -114,7 +105,7 @@ def main():
     network = Network(ws_port)
     engine = Engine(state, network, map_data, crud_url, spawn, CELL_SIZE, PLAYER_SPEED, PLAYER_RADIUS)
 
-    logger.info(f"Parsed map successfully. Starting WebSocket server on port {ws_port}")
+    logger.info("Parsed map successfully. Starting WebSocket server on port %s", ws_port)
     try:
         asyncio.run(network.run(engine.run))
     except KeyboardInterrupt:
